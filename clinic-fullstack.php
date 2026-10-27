@@ -156,3 +156,154 @@ class AuditLog extends Model
         ]);
     }
 }
+
+
+namespace Database\Seeders;
+
+use Illuminate\Database\Seeder;
+use App\Models\{HealthcareProvider, Procedure, Room, Equipment, InventoryItem};
+
+class ClinicSeeder extends Seeder
+{
+    public function run(): void
+    {
+        foreach ([['Dr. Reyes','Ophthalmology'],['Dr. Santos','Orthopedics'],['Dr. Lim','Gastroenterology'],['Dr. Cruz','OB-GYN']] as [$n,$s])
+            HealthcareProvider::create(['name' => $n, 'specialty' => $s]);
+
+        foreach ([['Cataract surgery',90],['Eye consultation',30],['Colonoscopy',60],['Knee arthroscopy',120]] as [$n,$m])
+            Procedure::create(['name' => $n, 'default_minutes' => $m]);
+
+        foreach (['Consultation Room 1','Operating Room 1','Procedure Room 2'] as $n) Room::create(['name' => $n]);
+        foreach (['Slit lamp','Phaco machine','Endoscope','Arthroscopy set'] as $n) Equipment::create(['name' => $n]);
+
+        foreach ([['Intraocular lens',25,20],['Surgical gloves (box)',60,30],['Sterile drape',18,25],['Povidone iodine',40,15]] as [$n,$q,$r])
+            InventoryItem::create(['name' => $n, 'quantity' => $q, 'reorder_point' => $r]);
+    }
+}
+
+
+
+namespace App\Http\Controllers;
+
+use App\Http\Requests\StoreAppointmentRequest;
+use App\Models\{Appointment, AuditLog};
+use Carbon\Carbon;
+use Illuminate\Support\Facades\DB;
+
+class AppointmentController extends Controller
+{
+    public function store(StoreAppointmentRequest $request)
+    {
+        $d = $request->validated();
+
+        $appointment = DB::transaction(function () use ($request, $d) {
+            $start = Carbon::parse($d['date'] . ' ' . $d['time']);
+
+            $appt = Appointment::create([
+                'patient_id'   => $d['patient_id'],
+                'provider_id'  => $d['provider_id'],
+                'procedure_id' => $d['procedure_id'],
+                'room_id'      => $d['room_id'],
+                'start_at'     => $start,
+                'end_at'       => $start->copy()->addMinutes((int) $d['duration']),
+                'duration'     => $d['duration'],
+                'send_notice'  => $d['send_notice'] ?? false,
+                'notes'        => $d['notes'] ?? null,
+                'status'       => 'Scheduled',
+                'created_by'   => $request->user()->id,
+            ]);
+            $appt->equipment()->sync($d['equipment'] ?? []);
+            AuditLog::record($request->user(), 'appointment.created', $appt);
+            return $appt;
+        });
+
+        return response()->json($appointment->load(['patient','provider','procedure','room','equipment']), 201);
+    }
+}
+
+
+
+namespace App\Http\Controllers;
+
+use App\Http\Requests\StoreInventoryTransactionRequest;
+use App\Models\{InventoryItem, InventoryTransaction, AuditLog};
+use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\DB;
+
+class InventoryTransactionController extends Controller
+{
+    public function store(StoreInventoryTransactionRequest $request)
+    {
+        $d = $request->validated();
+
+        $result = DB::transaction(function () use ($request, $d) {
+           
+            $item = InventoryItem::lockForUpdate()->findOrFail($d['item_id']);
+
+            if ($d['type'] === 'Stock out' && $d['quantity'] > $item->quantity) {
+                abort(422, 'Stock out cannot exceed the current balance.');
+            }
+
+            $item->quantity += $d['type'] === 'Stock in' ? $d['quantity'] : -$d['quantity'];
+            $item->reorder_point = $d['reorder_point'];
+            $item->save();
+
+            if ($request->hasFile('receipt')) {
+                $d['receipt_path'] = $request->file('receipt')->store('receipts', 'private');
+            }
+            $d['created_by'] = $request->user()->id;
+
+            $tx = InventoryTransaction::create(Arr::except($d, ['reorder_point', 'receipt']));
+            AuditLog::record($request->user(), 'inventory.' . strtolower(str_replace(' ', '_', $d['type'])), $tx);
+
+            return ['transaction' => $tx, 'item' => $item, 'low_stock' => $item->quantity <= $item->reorder_point];
+        });
+
+        return response()->json($result, 201);
+    }
+}
+
+
+
+namespace App\Http\Controllers;
+
+use App\Http\Requests\ReportFilterRequest;
+use App\Models\Appointment;
+
+class ReportController extends Controller
+{
+    public function appointments(ReportFilterRequest $request)
+    {
+        $f = $request->validated();
+
+        $q = Appointment::with(['patient','provider','procedure','room'])
+            ->whereIn('status', $f['status'])
+            ->where('archived', $f['archived'] ?? false)
+            ->when($f['provider_id'] ?? null, fn ($q, $id) => $q->where('provider_id', $id))
+            ->when($f['from'] ?? null, fn ($q, $d) => $q->whereDate('start_at', '>=', $d))
+            ->when($f['to'] ?? null,   fn ($q, $d) => $q->whereDate('start_at', '<=', $d))
+            ->when($f['keyword'] ?? null, function ($q, $kw) {
+                $like = '%' . addcslashes($kw, '%_\\') . '%';
+                $q->where(fn ($w) => $w
+                    ->whereHas('patient', fn ($p) => $p->where('first_name', 'like', $like)->orWhere('last_name', 'like', $like))
+                    ->orWhereHas('procedure', fn ($p) => $p->where('name', 'like', $like)));
+            })
+            ->orderBy('start_at', $f['sort'] ?? 'asc');
+
+        if (($f['format'] ?? 'json') === 'csv') {
+            $rows = $q->get();
+            return response()->streamDownload(function () use ($rows) {
+                $out = fopen('php://output', 'w');
+                fputcsv($out, ['id','patient','provider','procedure','date','time','status']);
+                foreach ($rows as $a) {
+                    fputcsv($out, [$a->id, $a->patient->first_name . ' ' . $a->patient->last_name,
+                        $a->provider->name, $a->procedure->name,
+                        $a->start_at->format('Y-m-d'), $a->start_at->format('H:i'), $a->status]);
+                }
+                fclose($out);
+            }, 'report.csv', ['Content-Type' => 'text/csv']);
+        }
+
+        return response()->json($q->paginate($f['per_page'] ?? 10));
+    }
+}
