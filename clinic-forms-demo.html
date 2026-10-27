@@ -1,0 +1,481 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Clinic Management System - Form Controls</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.development.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.development.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
+<style>
+:root{--bg:#f6f8fa;--card:#fff;--ink:#1b2430;--mute:#55606e;--line:#c5ccd6;--brand:#0f5c8a;--err:#b42318;--ok:#1a7f4b;--warn:#8a5a00}
+*{box-sizing:border-box}
+body{margin:0;font:16px/1.5 system-ui,Segoe UI,Arial,sans-serif;background:var(--bg);color:var(--ink)}
+header{background:var(--brand);color:#fff;padding:16px 24px}
+header h1{margin:0;font-size:20px}header p{margin:2px 0 0;font-size:14px;opacity:.9}
+main{max-width:980px;margin:0 auto;padding:16px}
+nav{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px}
+nav button{padding:8px 14px;border:1px solid var(--line);background:#fff;border-radius:8px;cursor:pointer;font:inherit}
+nav button[aria-current="page"]{background:var(--brand);color:#fff;border-color:var(--brand)}
+.tag{font-size:12px;color:var(--mute);margin-left:6px}
+section.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:20px;margin-bottom:20px}
+h2{margin:0 0 4px;font-size:18px}h3{margin:20px 0 8px;font-size:16px}
+.sub{color:var(--mute);margin:0 0 16px;font-size:14px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px 18px}
+.fld{display:flex;flex-direction:column;gap:4px}
+label,legend{font-weight:600;font-size:14px}
+input[type=text],input[type=email],input[type=tel],input[type=password],input[type=number],input[type=date],input[type=time],select,textarea{width:100%;padding:8px 10px;border:1px solid #7b8794;border-radius:6px;font:inherit;background:#fff;color:var(--ink)}
+input[type=file]{font:inherit}
+input[aria-invalid=true],select[aria-invalid=true],textarea[aria-invalid=true]{border-color:var(--err);border-width:2px}
+:focus-visible{outline:3px solid #f5a623;outline-offset:2px}
+fieldset{border:1px solid var(--line);border-radius:8px;padding:8px 12px;margin:0}
+.opts{display:flex;flex-wrap:wrap;gap:6px 16px;margin-top:4px}
+.opt{display:flex;align-items:center;gap:6px;font-weight:400}
+.help{font-size:13px;color:var(--mute)}
+.err{font-size:13px;color:var(--err);font-weight:600}
+.span2{grid-column:1/-1}
+.actions{display:flex;gap:10px;margin-top:18px;flex-wrap:wrap}
+.btn{padding:9px 18px;border-radius:8px;border:1px solid var(--brand);background:var(--brand);color:#fff;font:inherit;cursor:pointer}
+.btn.sec{background:#fff;color:var(--brand)}
+.btn.warn{background:#fff;color:var(--warn);border-color:var(--warn)}
+.summary{border:2px solid var(--err);background:#fdecea;border-radius:8px;padding:10px 14px;margin-bottom:14px}
+.summary ul{margin:6px 0 0 18px;padding:0}
+.ok{border:2px solid var(--ok);background:#e8f6ee;border-radius:8px;padding:10px 14px;margin-bottom:14px}
+.dup{border:2px solid var(--warn);background:#fff6e0;border-radius:8px;padding:10px 14px;margin-bottom:14px}
+.sw{display:flex;align-items:center;gap:10px}
+.sw input{width:42px;height:22px;accent-color:var(--brand)}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--line)}
+th{background:#eef2f6}
+.low{color:var(--err);font-weight:700}
+.tablewrap{overflow-x:auto}
+</style>
+</head>
+<body>
+<header>
+  <h1>Clinic Management System - River Valley Eye Center</h1>
+  <p>Final Project UI: form controls, validation, usability and accessibility</p>
+</header>
+<main><div id="root"></div></main>
+
+<script type="text/babel">
+const {useState, useRef} = React;
+const today = () => new Date().toISOString().slice(0,10);
+
+function useForm(initial, rules){
+  const [v,setV] = useState(initial);
+  const [e,setE] = useState({});
+  const set = (n,val) => {
+    const nv = {...v,[n]:val};
+    setV(nv);
+    if (e[n] !== undefined) setE(p => ({...p,[n]: (rules[n] && rules[n](nv)) || ''}));
+  };
+  const blur = n => setE(p => ({...p,[n]: (rules[n] && rules[n](v)) || ''}));
+  const validate = () => {
+    const ne = {};
+    for (const n in rules){ const m = rules[n](v); if (m) ne[n] = m; }
+    setE(ne); return ne;
+  };
+  const reset = () => { setV(initial); setE({}); };
+  return {v,e,set,blur,validate,reset};
+}
+const describe = (n,f,help) => [help ? n+'-help' : null, f.e[n] ? n+'-err' : null].filter(Boolean).join(' ') || undefined;
+const Req = () => <span aria-hidden="true" style={{color:'#b42318'}}> *</span>;
+const Msgs = ({n,f,help}) => <>
+  {help && <div id={n+'-help'} className="help">{help}</div>}
+  {f.e[n] && <div id={n+'-err'} className="err" role="alert">{f.e[n]}</div>}
+</>;
+
+function TextField({f,name,label,type='text',req,help,span,...rest}){
+  return <div className={'fld'+(span?' span2':'')}>
+    <label htmlFor={name}>{label}{req && <Req/>}</label>
+    <input id={name} name={name} type={type} value={f.v[name]}
+      onChange={ev=>f.set(name,ev.target.value)} onBlur={()=>f.blur(name)}
+      aria-required={req||undefined} aria-invalid={!!f.e[name]}
+      aria-describedby={describe(name,f,help)} {...rest}/>
+    <Msgs n={name} f={f} help={help}/>
+  </div>;
+}
+function SelectField({f,name,label,options,req,help,placeholder='Select an option'}){
+  return <div className="fld">
+    <label htmlFor={name}>{label}{req && <Req/>}</label>
+    <select id={name} name={name} value={f.v[name]} onChange={ev=>f.set(name,ev.target.value)}
+      onBlur={()=>f.blur(name)} aria-required={req||undefined} aria-invalid={!!f.e[name]}
+      aria-describedby={describe(name,f,help)}>
+      <option value="">{placeholder}</option>
+      {options.map(o => <option key={o.value??o} value={o.value??o}>{o.label??o}</option>)}
+    </select>
+    <Msgs n={name} f={f} help={help}/>
+  </div>;
+}
+function TextArea({f,name,label,req,help,maxLength=250,placeholder}){
+  return <div className="fld span2">
+    <label htmlFor={name}>{label}{req && <Req/>}</label>
+    <textarea id={name} name={name} rows={3} maxLength={maxLength} placeholder={placeholder}
+      value={f.v[name]} onChange={ev=>f.set(name,ev.target.value)} onBlur={()=>f.blur(name)}
+      aria-required={req||undefined} aria-invalid={!!f.e[name]} aria-describedby={describe(name,f,help)}/>
+    <div className="help">{f.v[name].length}/{maxLength} characters</div>
+    <Msgs n={name} f={f} help={help}/>
+  </div>;
+}
+function RadioGroup({f,name,legend,options,req,help}){
+  return <fieldset aria-describedby={describe(name,f,help)} aria-required={req||undefined}>
+    <legend>{legend}{req && <Req/>}</legend>
+    <div className="opts">
+      {options.map((o,i)=>(
+        <label className="opt" key={o} htmlFor={name+'-'+i}>
+          <input type="radio" id={name+'-'+i} name={name} value={o} checked={f.v[name]===o}
+            onChange={()=>f.set(name,o)} onBlur={()=>f.blur(name)}/>{o}
+        </label>))}
+    </div>
+    <Msgs n={name} f={f} help={help}/>
+  </fieldset>;
+}
+function CheckGroup({f,name,legend,options,help}){
+  const toggle = o => f.set(name, f.v[name].includes(o) ? f.v[name].filter(x=>x!==o) : [...f.v[name],o]);
+  return <fieldset aria-describedby={describe(name,f,help)}>
+    <legend>{legend}</legend>
+    <div className="opts">
+      {options.map((o,i)=>(
+        <label className="opt" key={o} htmlFor={name+'-'+i}>
+          <input type="checkbox" id={name+'-'+i} name={name} checked={f.v[name].includes(o)} onChange={()=>toggle(o)}/>{o}
+        </label>))}
+    </div>
+    <Msgs n={name} f={f} help={help}/>
+  </fieldset>;
+}
+function Switch({f,name,label,help}){
+  return <div className="fld">
+    <div className="sw">
+      <input type="checkbox" role="switch" id={name} name={name} checked={f.v[name]}
+        onChange={ev=>f.set(name,ev.target.checked)} aria-checked={f.v[name]} aria-describedby={describe(name,f,help)}/>
+      <label htmlFor={name}>{label}: <strong>{f.v[name]?'On':'Off'}</strong></label>
+    </div>
+    <Msgs n={name} f={f} help={help}/>
+  </div>;
+}
+function Slider({f,name,label,min,max,step,unit,help}){
+  return <div className="fld">
+    <label htmlFor={name}>{label}: <output htmlFor={name}>{f.v[name]} {unit}</output></label>
+    <input type="range" id={name} name={name} min={min} max={max} step={step} value={f.v[name]}
+      onChange={ev=>f.set(name,Number(ev.target.value))} aria-valuetext={f.v[name]+' '+unit} aria-describedby={describe(name,f,help)}/>
+    <Msgs n={name} f={f} help={help}/>
+  </div>;
+}
+function FileField({f,name,label,help,req}){
+  return <div className="fld">
+    <label htmlFor={name}>{label}{req && <Req/>}</label>
+    <input type="file" id={name} name={name} accept=".pdf,.jpg,.jpeg,.png"
+      onChange={ev=>f.set(name,ev.target.files[0]||null)} aria-invalid={!!f.e[name]}
+      aria-required={req||undefined} aria-describedby={describe(name,f,help)}/>
+    <Msgs n={name} f={f} help={help}/>
+  </div>;
+}
+const fileErr = file => !file ? '' :
+  !/\.(pdf|jpe?g|png)$/i.test(file.name) ? 'File must be a PDF, JPG, or PNG.' :
+  file.size > 2*1024*1024 ? 'File must be 2 MB or smaller.' : '';
+
+function Summary({errors}){
+  const items = Object.values(errors).filter(Boolean);
+  if (!items.length) return null;
+  return <div className="summary" role="alert" tabIndex={-1} id="error-summary">
+    <strong>Please fix {items.length} {items.length===1?'problem':'problems'} before submitting:</strong>
+    <ul>{items.map((m,i)=><li key={i}>{m}</li>)}</ul>
+  </div>;
+}
+function focusFirst(errs){
+  const first = Object.keys(errs)[0];
+  const el = first && document.querySelector(`[name="${first}"]`);
+  if (el) el.focus();
+}
+function lev(a,b){
+  const m=a.length,n=b.length,d=Array.from({length:m+1},(_,i)=>[i,...Array(n).fill(0)]);
+  for(let j=1;j<=n;j++) d[0][j]=j;
+  for(let i=1;i<=m;i++) for(let j=1;j<=n;j++)
+    d[i][j]=Math.min(d[i-1][j]+1,d[i][j-1]+1,d[i-1][j-1]+(a[i-1]===b[j-1]?0:1));
+  return d[m][n];
+}
+const norm = s => s.toLowerCase().replace(/[^a-z ]/g,'').replace(/\s+/g,' ').trim();
+const similarity = (a,b) => { a=norm(a); b=norm(b); return 1 - lev(a,b)/Math.max(a.length,b.length,1); };
+
+const patientInit = {last:'',first:'',birth:'',sex:'',civil:'',email:'',mobile:'',address:'',philhealth:false,philNo:'',idFile:null,consent:false,created_by:'receptionist-01'};
+const patientRules = {
+  last: v => !v.last.trim() ? 'Last name is required.' : v.last.trim().length<2 ? 'Last name must have at least 2 characters.' : '',
+  first: v => !v.first.trim() ? 'First name is required.' : v.first.trim().length<2 ? 'First name must have at least 2 characters.' : '',
+  birth: v => !v.birth ? 'Birthdate is required.' : v.birth>today() ? 'Birthdate cannot be in the future.' : '',
+  sex: v => !v.sex ? 'Select the patient\'s sex.' : '',
+  civil: v => !v.civil ? 'Select a civil status.' : '',
+  email: v => v.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.email) ? 'Enter a valid email, for example name@example.com.' : '',
+  mobile: v => !v.mobile ? 'Mobile number is required.' : !/^09\d{9}$/.test(v.mobile) ? 'Use the format 09XXXXXXXXX (11 digits).' : '',
+  address: v => !v.address.trim() ? 'Address is required.' : v.address.trim().length<10 ? 'Address must have at least 10 characters.' : '',
+  philNo: v => v.philhealth && !/^\d{12}$/.test(v.philNo) ? 'PhilHealth number must be exactly 12 digits.' : '',
+  idFile: v => fileErr(v.idFile),
+  consent: v => !v.consent ? 'You must confirm the data privacy consent (RA 10173).' : ''
+};
+function PatientForm({patients,setPatients}){
+  const f = useForm(patientInit, patientRules);
+  const [msg,setMsg] = useState(null), [dup,setDup] = useState(null), [shown,setShown] = useState({});
+  const save = () => {
+    const p = {id:'P-'+String(patients.length+1).padStart(4,'0'),name:`${f.v.first.trim()} ${f.v.last.trim()}`,birth:f.v.birth,sex:f.v.sex,mobile:f.v.mobile,philhealth:f.v.philhealth?'Yes':'No'};
+    setPatients([...patients,p]); setMsg(`Patient ${p.name} registered as ${p.id}.`); setDup(null); f.reset(); setShown({});
+  };
+  const submit = ev => {
+    ev.preventDefault(); setMsg(null); setDup(null);
+    const errs = f.validate(); setShown(errs);
+    if (Object.keys(errs).length){ focusFirst(errs); return; }
+    const full = `${f.v.first} ${f.v.last}`;
+    const match = patients.find(p => p.birth===f.v.birth && similarity(p.name,full) >= 0.8);
+    if (match){ setDup(match); return; }
+    save();
+  };
+  return <section className="card" aria-labelledby="pf-h">
+    <h2 id="pf-h">Patient registration <span className="tag">Major form - Patient and Medical Records</span></h2>
+    <p className="sub">Fields marked * are required. Possible duplicate names are flagged for staff review.</p>
+    {msg && <div className="ok" role="status">{msg}</div>}
+    <form onSubmit={submit} onReset={()=>{f.reset();setMsg(null);setDup(null);setShown({});}} noValidate>
+      <Summary errors={shown}/>
+      {dup && <div className="dup" role="alert">
+        <strong>Possible duplicate:</strong> {dup.name} ({dup.id}), born {dup.birth}, already exists.
+        <div className="actions">
+          <button type="button" className="btn sec" onClick={()=>{setDup(null);setMsg(`Existing record ${dup.id} reused.`);f.reset();}}>Use existing record</button>
+          <button type="button" className="btn warn" onClick={save}>Register as new patient anyway</button>
+        </div></div>}
+      <input type="hidden" name="created_by" value={f.v.created_by}/>
+      <div className="grid">
+        <TextField f={f} name="last" label="Last name" req placeholder="e.g. Dela Cruz" maxLength={50} autoComplete="family-name"/>
+        <TextField f={f} name="first" label="First name" req placeholder="e.g. Maria" maxLength={50} autoComplete="given-name"/>
+        <TextField f={f} name="birth" type="date" label="Birthdate" req max={today()} help="Used together with the name to detect duplicates."/>
+        <RadioGroup f={f} name="sex" legend="Sex" req options={['Female','Male']}/>
+        <SelectField f={f} name="civil" label="Civil status" req options={['Single','Married','Widowed','Separated']}/>
+        <TextField f={f} name="email" type="email" label="Email (optional)" placeholder="name@example.com" autoComplete="email"/>
+        <TextField f={f} name="mobile" type="tel" label="Mobile number" req placeholder="09171234567" help="11 digits, starting with 09." inputMode="numeric" maxLength={11}/>
+        <TextArea f={f} name="address" label="Home address" req placeholder="House no., street, barangay, city" maxLength={200}/>
+        <Switch f={f} name="philhealth" label="PhilHealth member" help="Turn on to enter the PhilHealth number."/>
+        {f.v.philhealth && <TextField f={f} name="philNo" label="PhilHealth number" req placeholder="12 digits" inputMode="numeric" maxLength={12}/>}
+        <FileField f={f} name="idFile" label="Valid ID (optional)" help="PDF, JPG, or PNG, up to 2 MB."/>
+        <div className="fld span2">
+          <label className="opt" htmlFor="consent">
+            <input type="checkbox" id="consent" name="consent" checked={f.v.consent} onChange={ev=>f.set('consent',ev.target.checked)}
+              aria-required="true" aria-invalid={!!f.e.consent} aria-describedby={describe('consent',f)}/>
+            I confirm the patient consents to the collection of their data under the Data Privacy Act of 2012.<Req/>
+          </label>
+          <Msgs n="consent" f={f}/>
+        </div>
+      </div>
+      <div className="actions">
+        <button type="submit" className="btn">Register patient</button>
+        <button type="reset" className="btn sec">Clear patient form</button>
+      </div>
+    </form>
+    <h3>Registered patients</h3>
+    <div className="tablewrap"><table><caption className="help" style={{textAlign:'left'}}>Records stored by the system</caption>
+      <thead><tr><th>ID</th><th>Name</th><th>Birthdate</th><th>Sex</th><th>Mobile</th><th>PhilHealth</th></tr></thead>
+      <tbody>{patients.map(p=><tr key={p.id}><td>{p.id}</td><td>{p.name}</td><td>{p.birth}</td><td>{p.sex}</td><td>{p.mobile}</td><td>{p.philhealth}</td></tr>)}</tbody></table></div>
+  </section>;
+}
+
+const PROVIDERS = ['Dr. Reyes (Ophthalmology)','Dr. Santos (Orthopedics)','Dr. Lim (Gastroenterology)','Dr. Cruz (OB-GYN)'];
+const PROCS = [{value:'Cataract surgery',label:'Cataract surgery',mins:90},{value:'Eye consultation',label:'Eye consultation',mins:30},{value:'Colonoscopy',label:'Colonoscopy',mins:60},{value:'Knee arthroscopy',label:'Knee arthroscopy',mins:120}];
+const ROOMS = ['Consultation Room 1','Operating Room 1','Procedure Room 2'];
+const EQUIP = ['Slit lamp','Phaco machine','Endoscope','Arthroscopy set'];
+const apptInit = {patient:'',provider:'',procedure:'',date:'',time:'',room:'',equip:[],duration:30,reminder:true,notes:'',status:'Scheduled'};
+const toMin = (d,t) => Math.floor(new Date(d+'T'+t).getTime()/60000);
+function AppointmentForm({patients,appts,setAppts}){
+  const rules = {
+    patient: v => !v.patient ? 'Select a patient.' : '',
+    provider: v => !v.provider ? 'Select a healthcare provider.' : '',
+    procedure: v => !v.procedure ? 'Select a procedure.' : '',
+    date: v => !v.date ? 'Appointment date is required.' : v.date < today() ? 'Date cannot be in the past.' : '',
+    time: v => !v.time ? 'Appointment time is required.' : (v.time<'08:00'||v.time>'17:00') ? 'Clinic hours are 08:00 to 17:00.' : '',
+    room: v => !v.room ? 'Select a room.' : '',
+    duration: v => v.duration<15||v.duration>180 ? 'Duration must be 15 to 180 minutes.' : '',
+    notes: v => v.notes.length>250 ? 'Notes must be 250 characters or fewer.' : ''
+  };
+  const f = useForm(apptInit, rules);
+  const [msg,setMsg] = useState(null), [shown,setShown] = useState({}), [conflict,setConflict] = useState('');
+  const pickProc = val => { f.set('procedure',val); const p = PROCS.find(x=>x.value===val); if (p) f.set('duration',p.mins); };
+  const submit = ev => {
+    ev.preventDefault(); setMsg(null); setConflict('');
+    const errs = f.validate(); setShown(errs);
+    if (Object.keys(errs).length){ focusFirst(errs); return; }
+    const s = toMin(f.v.date,f.v.time), e = s + f.v.duration;
+    const hit = appts.find(a => a.status==='Scheduled' && (a.provider===f.v.provider || a.room===f.v.room) && s < a.end && a.start < e);
+    if (hit){ setConflict(`Conflict: ${hit.provider===f.v.provider?'the provider':'the room'} is already booked on ${hit.date} at ${hit.time} (${hit.procedure}). Choose another time.`); return; }
+    const n = {id:'A-'+String(appts.length+1).padStart(4,'0'),patient:patients.find(p=>p.id===f.v.patient).name,provider:f.v.provider,procedure:f.v.procedure,room:f.v.room,date:f.v.date,time:f.v.time,start:s,end:e,status:'Scheduled',reminder:f.v.reminder};
+    setAppts([...appts,n]); setMsg(`Appointment ${n.id} confirmed for ${n.patient}.`); f.reset(); setShown({});
+  };
+  return <section className="card" aria-labelledby="af-h">
+    <h2 id="af-h">Book appointment <span className="tag">Major form - Appointment and Scheduling</span></h2>
+    <p className="sub">The system checks the provider and room for overlapping bookings before confirming.</p>
+    {msg && <div className="ok" role="status">{msg}</div>}
+    <form onSubmit={submit} onReset={()=>{f.reset();setMsg(null);setShown({});setConflict('');}} noValidate>
+      <Summary errors={shown}/>
+      {conflict && <div className="summary" role="alert">{conflict}</div>}
+      <input type="hidden" name="status" value={f.v.status}/>
+      <div className="grid">
+        <SelectField f={f} name="patient" label="Patient" req options={patients.map(p=>({value:p.id,label:`${p.name} (${p.id})`}))}/>
+        <SelectField f={f} name="provider" label="Healthcare provider" req options={PROVIDERS}/>
+        <div className="fld">
+          <label htmlFor="procedure">Procedure<Req/></label>
+          <select id="procedure" name="procedure" value={f.v.procedure} onChange={ev=>pickProc(ev.target.value)} onBlur={()=>f.blur('procedure')}
+            aria-required="true" aria-invalid={!!f.e.procedure} aria-describedby={describe('procedure',f)}>
+            <option value="">Select an option</option>{PROCS.map(p=><option key={p.value} value={p.value}>{p.label}</option>)}
+          </select><Msgs n="procedure" f={f}/>
+        </div>
+        <TextField f={f} name="date" type="date" label="Date" req min={today()}/>
+        <TextField f={f} name="time" type="time" label="Start time" req min="08:00" max="17:00" help="Clinic hours: 08:00 to 17:00."/>
+        <RadioGroup f={f} name="room" legend="Room" req options={ROOMS}/>
+        <CheckGroup f={f} name="equip" legend="Equipment needed (optional)" options={EQUIP}/>
+        <Slider f={f} name="duration" label="Duration" min={15} max={180} step={15} unit="minutes" help="Filled in from the procedure; adjust if needed."/>
+        <Switch f={f} name="reminder" label="Send appointment notice" help="Generates an appointment notification document."/>
+        <TextArea f={f} name="notes" label="Notes (optional)" placeholder="Special instructions for staff" />
+      </div>
+      <div className="actions">
+        <button type="submit" className="btn">Confirm appointment</button>
+        <button type="reset" className="btn sec">Clear appointment form</button>
+      </div>
+    </form>
+    <h3>Scheduled appointments</h3>
+    <div className="tablewrap"><table><caption className="help" style={{textAlign:'left'}}>Bookings stored by the system</caption>
+      <thead><tr><th>ID</th><th>Patient</th><th>Provider</th><th>Procedure</th><th>Room</th><th>Date</th><th>Time</th><th>Status</th></tr></thead>
+      <tbody>{appts.map(a=><tr key={a.id}><td>{a.id}</td><td>{a.patient}</td><td>{a.provider}</td><td>{a.procedure}</td><td>{a.room}</td><td>{a.date}</td><td>{a.time}</td><td>{a.status}</td></tr>)}
+      {!appts.length && <tr><td colSpan="8">No appointments yet.</td></tr>}</tbody></table></div>
+  </section>;
+}
+
+const SUPPLIERS = ['MedSupply Manila','Pharma Direct PH','SurgiCare Trading'];
+const invInit = {item:'',type:'',qty:'',unit:'',supplier:'',date:today(),expiry:'',cost:'',reorder:20,remarks:'',receipt:null,urgent:false};
+function InventoryForm({inv,setInv}){
+  const rules = {
+    item: v => !v.item ? 'Select an inventory item.' : '',
+    type: v => !v.type ? 'Select Stock in or Stock out.' : '',
+    qty: v => v.qty==='' ? 'Quantity is required.' : !Number.isInteger(Number(v.qty))||Number(v.qty)<1||Number(v.qty)>5000 ? 'Quantity must be a whole number from 1 to 5000.' :
+      (v.type==='Stock out' && inv.find(i=>i.name===v.item) && Number(v.qty)>inv.find(i=>i.name===v.item).qty) ? 'Stock out cannot exceed the current balance.' : '',
+    unit: v => !v.unit ? 'Select a unit.' : '',
+    supplier: v => v.type==='Stock in' && !v.supplier ? 'Select a supplier for stock in.' : '',
+    date: v => !v.date ? 'Transaction date is required.' : v.date>today() ? 'Date cannot be in the future.' : '',
+    expiry: v => v.expiry && v.expiry<=v.date ? 'Expiry date must be after the transaction date.' : '',
+    cost: v => v.type==='Stock in' && (v.cost===''||Number(v.cost)<=0) ? 'Enter a unit cost greater than 0.' : '',
+    receipt: v => fileErr(v.receipt)
+  };
+  const f = useForm(invInit, rules);
+  const [msg,setMsg] = useState(null), [shown,setShown] = useState({});
+  const submit = ev => {
+    ev.preventDefault(); setMsg(null);
+    const errs = f.validate(); setShown(errs);
+    if (Object.keys(errs).length){ focusFirst(errs); return; }
+    const q = Number(f.v.qty);
+    setInv(inv.map(i => i.name===f.v.item ? {...i, qty:i.qty+(f.v.type==='Stock in'?q:-q), reorder:f.v.reorder} : i));
+    setMsg(`${f.v.type} of ${q} ${f.v.unit} recorded for ${f.v.item}.`); f.reset(); setShown({});
+  };
+  return <section className="card" aria-labelledby="if-h">
+    <h2 id="if-h">Inventory transaction <span className="tag">Supporting form - Inventory Management</span></h2>
+    <p className="sub">Updates the stock balance and flags items at or below the reorder point.</p>
+    {msg && <div className="ok" role="status">{msg}</div>}
+    <form onSubmit={submit} onReset={()=>{f.reset();setMsg(null);setShown({});}} noValidate>
+      <Summary errors={shown}/>
+      <div className="grid">
+        <SelectField f={f} name="item" label="Item" req options={inv.map(i=>i.name)}/>
+        <RadioGroup f={f} name="type" legend="Transaction type" req options={['Stock in','Stock out']}/>
+        <TextField f={f} name="qty" type="number" label="Quantity" req min="1" max="5000" step="1" placeholder="e.g. 50"/>
+        <SelectField f={f} name="unit" label="Unit" req options={['pcs','box','vial','bottle']}/>
+        {f.v.type==='Stock in' && <SelectField f={f} name="supplier" label="Supplier" req options={SUPPLIERS}/>}
+        <TextField f={f} name="date" type="date" label="Transaction date" req max={today()}/>
+        {f.v.type==='Stock in' && <TextField f={f} name="expiry" type="date" label="Expiry date (optional)"/>}
+        {f.v.type==='Stock in' && <TextField f={f} name="cost" type="number" label="Unit cost (PHP)" req min="0" step="0.01" placeholder="0.00"/>}
+        <Slider f={f} name="reorder" label="Reorder point" min={5} max={100} step={5} unit="units" help="Low-stock notification triggers at or below this level."/>
+        <Switch f={f} name="urgent" label="Urgent order" help="Marks the delivery as needed within the week."/>
+        <FileField f={f} name="receipt" label="Receipt or delivery note (optional)" help="PDF, JPG, or PNG, up to 2 MB."/>
+        <TextArea f={f} name="remarks" label="Remarks (optional)" maxLength={150} placeholder="Delivery details"/>
+      </div>
+      <div className="actions">
+        <button type="submit" className="btn">Record transaction</button>
+        <button type="reset" className="btn sec">Clear inventory form</button>
+      </div>
+    </form>
+    <h3>Current stock balances</h3>
+    <div className="tablewrap"><table><caption className="help" style={{textAlign:'left'}}>Balances stored by the system</caption>
+      <thead><tr><th>Item</th><th>Balance</th><th>Reorder point</th><th>Status</th></tr></thead>
+      <tbody>{inv.map(i=><tr key={i.name}><td>{i.name}</td><td>{i.qty}</td><td>{i.reorder}</td>
+        <td>{i.qty<=i.reorder ? <span className="low">Low stock - reorder</span> : 'OK'}</td></tr>)}</tbody></table></div>
+  </section>;
+}
+
+const filtInit = {keyword:'',from:'',to:'',provider:'',category:'Appointments',status:['Scheduled'],sort:'Date (oldest first)',rows:10,archived:false,format:'CSV'};
+function ReportForm({appts}){
+  const rules = {
+    keyword: v => v.keyword.length>50 ? 'Keyword must be 50 characters or fewer.' : '',
+    to: v => v.from && v.to && v.to < v.from ? 'End date must be on or after the start date.' : '',
+    rows: v => !Number.isInteger(Number(v.rows))||v.rows<5||v.rows>100 ? 'Rows per page must be 5 to 100.' : '',
+    status: v => !v.status.length ? 'Select at least one status.' : ''
+  };
+  const f = useForm(filtInit, rules);
+  const [res,setRes] = useState(null), [shown,setShown] = useState({});
+  const run = ev => {
+    ev.preventDefault();
+    const errs = f.validate(); setShown(errs);
+    if (Object.keys(errs).length){ focusFirst(errs); return; }
+    let r = appts.filter(a => f.v.status.includes(a.status) &&
+      (!f.v.provider || a.provider===f.v.provider) && (!f.v.from || a.date>=f.v.from) && (!f.v.to || a.date<=f.v.to) &&
+      (!f.v.keyword || (a.patient+a.procedure).toLowerCase().includes(f.v.keyword.toLowerCase())));
+    r = [...r].sort((a,b)=> f.v.sort.startsWith('Date (old') ? a.start-b.start : b.start-a.start).slice(0,Number(f.v.rows));
+    setRes(r);
+  };
+  const exportFile = () => {
+    if (!res) return;
+    const data = f.v.format==='JSON' ? JSON.stringify(res,null,2) :
+      ['id,patient,provider,procedure,date,time,status',...res.map(a=>[a.id,a.patient,a.provider,a.procedure,a.date,a.time,a.status].map(x=>`"${x}"`).join(','))].join('\n');
+    const url = URL.createObjectURL(new Blob([data],{type:'text/plain'}));
+    const a = document.createElement('a'); a.href = url; a.download = 'report.'+f.v.format.toLowerCase(); a.click(); URL.revokeObjectURL(url);
+  };
+  return <section className="card" aria-labelledby="rf-h">
+    <h2 id="rf-h">Report filters <span className="tag">Supporting form - Reports and Search</span></h2>
+    <p className="sub">Filter by date range, provider, and status, then export the result.</p>
+    <form onSubmit={run} onReset={()=>{f.reset();setRes(null);setShown({});}} noValidate>
+      <Summary errors={shown}/>
+      <div className="grid">
+        <TextField f={f} name="keyword" type="text" label="Search keyword" placeholder="Patient or procedure" maxLength={50}/>
+        <SelectField f={f} name="category" label="Report category" options={['Appointments','Inventory','Financial']} placeholder="Appointments"/>
+        <TextField f={f} name="from" type="date" label="From date"/>
+        <TextField f={f} name="to" type="date" label="To date"/>
+        <SelectField f={f} name="provider" label="Provider" options={PROVIDERS} placeholder="All providers"/>
+        <CheckGroup f={f} name="status" legend="Status" options={['Scheduled','Completed','Cancelled']}/>
+        <RadioGroup f={f} name="sort" legend="Sort order" options={['Date (oldest first)','Date (newest first)']}/>
+        <TextField f={f} name="rows" type="number" label="Rows per page" min="5" max="100" step="1"/>
+        <Switch f={f} name="archived" label="Include archived records"/>
+        <SelectField f={f} name="format" label="Export format" options={['CSV','JSON']} placeholder="CSV"/>
+      </div>
+      <div className="actions">
+        <button type="submit" className="btn">Apply filters</button>
+        <button type="button" className="btn sec" onClick={exportFile} disabled={!res}>Export results</button>
+        <button type="reset" className="btn sec">Reset filters</button>
+      </div>
+    </form>
+    {res && <><h3 role="status">{res.length} result{res.length===1?'':'s'}</h3>
+      <div className="tablewrap"><table><thead><tr><th>ID</th><th>Patient</th><th>Provider</th><th>Procedure</th><th>Date</th><th>Time</th><th>Status</th></tr></thead>
+      <tbody>{res.map(a=><tr key={a.id}><td>{a.id}</td><td>{a.patient}</td><td>{a.provider}</td><td>{a.procedure}</td><td>{a.date}</td><td>{a.time}</td><td>{a.status}</td></tr>)}
+      {!res.length && <tr><td colSpan="7">No records match the filters.</td></tr>}</tbody></table></div></>}
+  </section>;
+}
+
+function App(){
+  const [tab,setTab] = useState(0);
+  const [patients,setPatients] = useState([
+    {id:'P-0001',name:'Maria Santos',birth:'1990-05-12',sex:'Female',mobile:'09171234567',philhealth:'Yes'},
+    {id:'P-0002',name:'Jose Ramirez',birth:'1978-11-03',sex:'Male',mobile:'09281112233',philhealth:'No'}]);
+  const [appts,setAppts] = useState([]);
+  const [inv,setInv] = useState([
+    {name:'Intraocular lens',qty:25,reorder:20},{name:'Surgical gloves (box)',qty:60,reorder:30},{name:'Sterile drape',qty:18,reorder:25},{name:'Povidone iodine',qty:40,reorder:15}]);
+  const tabs = ['Patient registration','Appointment','Inventory','Report filters'];
+  return <>
+    <nav aria-label="Forms">{tabs.map((t,i)=><button key={t} onClick={()=>setTab(i)} aria-current={tab===i?'page':undefined}>{t}</button>)}</nav>
+    {tab===0 && <PatientForm patients={patients} setPatients={setPatients}/>}
+    {tab===1 && <AppointmentForm patients={patients} appts={appts} setAppts={setAppts}/>}
+    {tab===2 && <InventoryForm inv={inv} setInv={setInv}/>}
+    {tab===3 && <ReportForm appts={appts}/>}
+  </>;
+}
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>
