@@ -38,6 +38,7 @@ fieldset{border:1px solid var(--line);border-radius:8px;padding:8px 12px;margin:
 .btn{padding:9px 18px;border-radius:8px;border:1px solid var(--brand);background:var(--brand);color:#fff;font:inherit;cursor:pointer}
 .btn.sec{background:#fff;color:var(--brand)}
 .btn.warn{background:#fff;color:var(--warn);border-color:var(--warn)}
+.btn.sm{padding:3px 10px;font-size:13px}
 .summary{border:2px solid var(--err);background:#fdecea;border-radius:8px;padding:10px 14px;margin-bottom:14px}
 .summary ul{margin:6px 0 0 18px;padding:0}
 .ok{border:2px solid var(--ok);background:#e8f6ee;border-radius:8px;padding:10px 14px;margin-bottom:14px}
@@ -54,7 +55,6 @@ th{background:#eef2f6}
 <body>
 <header>
   <h1>Clinic Management System - River Valley Eye Center</h1>
-  <p>Integrated Frontendconnected to Laravel RESTful API</p>
 </header>
 <main><div id="root"></div></main>
 
@@ -62,30 +62,21 @@ th{background:#eef2f6}
 const {useState, useEffect} = React;
 const today = () => new Date().toISOString().slice(0,10);
 
-// API Base URL - update if your Laravel backend runs on a different port (e.g., http://127.0.0.1:8000/api)
-const API_BASE = '/api';
-
-async function apiRequest(endpoint, options = {}) {
-  const token = localStorage.getItem('auth_token'); // Retrieves Sanctum token if available
-  const headers = {
-    'Accept': 'application/json',
-    ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
-    ...options.headers,
-  };
-
-  const response = await fetch(`${API_BASE}${endpoint}`, {
-    ...options,
-    headers,
+function usePersisted(key, initial) {
+  const [val, setVal] = useState(() => {
+    try {
+      const s = localStorage.getItem(key);
+      return s ? JSON.parse(s) : initial;
+    } catch (e) { return initial; }
   });
-
-  const data = await response.json().catch(() => ({}));
-
-  if (!response.ok) {
-    throw { status: response.status, data };
-  }
-
-  return data;
+  useEffect(() => {
+    try { localStorage.setItem(key, JSON.stringify(val)); } catch (e) {}
+  }, [key, val]);
+  return [val, setVal];
 }
+const nextId = list => list.reduce((m, x) => Math.max(m, x.id), 0) + 1;
+const toMin = t => { const [h, m] = t.split(':').map(Number); return h * 60 + m; };
+const fmtTime = mins => String(Math.floor(mins / 60)).padStart(2, '0') + ':' + String(mins % 60).padStart(2, '0');
 
 function useForm(initial) {
   const [v, setV] = useState(initial);
@@ -94,7 +85,6 @@ function useForm(initial) {
     setV(p => ({ ...p, [n]: val }));
     if (e[n]) setE(p => ({ ...p, [n]: '' }));
   };
-  // Update several fields in a single state change (avoids partial/stale updates)
   const setMany = (obj) => {
     setV(p => ({ ...p, ...obj }));
     setE(p => {
@@ -230,55 +220,79 @@ function Summary({ errors }) {
   </div>;
 }
 
-const patientInit = { last_name: '', first_name: '', birthdate: '', sex: '', civil_status: '', email: '', mobile: '', address: '', is_philhealth_member: false, philhealth_no: '', valid_id: null, consent: false, confirm_new: false };
+function checkFile(file) {
+  if (!file) return '';
+  if (!/\.(pdf|jpe?g|png)$/i.test(file.name)) return 'File must be a PDF, JPG, or PNG.';
+  if (file.size > 2 * 1024 * 1024) return 'File must be 2 MB or smaller.';
+  return '';
+}
+
+const patientInit = { last_name: '', first_name: '', birthdate: '', sex: '', civil_status: '', email: '', mobile: '', address: '', is_philhealth_member: false, philhealth_no: '', valid_id: null, consent: false };
+
+function validatePatient(v) {
+  const e = {};
+  if (!v.last_name.trim()) e.last_name = 'Last name is required.';
+  if (!v.first_name.trim()) e.first_name = 'First name is required.';
+  if (!v.birthdate) e.birthdate = 'Birthdate is required.';
+  else if (v.birthdate > today()) e.birthdate = 'Birthdate cannot be in the future.';
+  if (!v.sex) e.sex = 'Select the patient\'s sex.';
+  if (!v.civil_status) e.civil_status = 'Select a civil status.';
+  if (v.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.email)) e.email = 'Enter a valid email address.';
+  if (!v.mobile) e.mobile = 'Mobile number is required.';
+  else if (!/^09\d{9}$/.test(v.mobile)) e.mobile = 'Mobile number must be 11 digits starting with 09.';
+  if (!v.address.trim()) e.address = 'Home address is required.';
+  if (v.is_philhealth_member && !/^\d{12}$/.test(v.philhealth_no || '')) e.philhealth_no = 'PhilHealth number must be exactly 12 digits.';
+  const fileErr = checkFile(v.valid_id);
+  if (fileErr) e.valid_id = fileErr;
+  if (!v.consent) e.consent = 'Patient consent is required.';
+  return e;
+}
 
 function PatientForm({ patients, setPatients }) {
   const f = useForm(patientInit);
   const [msg, setMsg] = useState(null), [dup, setDup] = useState(null);
+  const [formKey, setFormKey] = useState(0);
 
-  const submit = async (ev, forceConfirm = false) => {
+  const clearAll = () => { f.reset(); setDup(null); setFormKey(k => k + 1); };
+
+  const submit = (ev, force = false) => {
     if (ev) ev.preventDefault();
     setMsg(null); setDup(null);
 
-    const formData = new FormData();
-    Object.keys(f.v).forEach(k => {
-      if (k === 'valid_id' && f.v[k]) {
-        formData.append('valid_id', f.v[k]);
-      } else if (k === 'confirm_new') {
-        formData.append('confirm_new', forceConfirm ? '1' : (f.v.confirm_new ? '1' : '0'));
-      } else if (typeof f.v[k] === 'boolean') {
-        formData.append(k, f.v[k] ? '1' : '0');
-      } else if (f.v[k] !== null && f.v[k] !== '') {
-        formData.append(k, f.v[k]);
-      }
-    });
+    const errs = validatePatient(f.v);
+    if (Object.keys(errs).length) { f.setE(errs); return; }
+    f.setE({});
 
-    try {
-      const data = await apiRequest('/patients', { method: 'POST', body: formData });
-      setPatients([data, ...patients]);
-      setMsg(`Patient ${data.first_name} ${data.last_name} registered successfully with ID ${data.id}.`);
-      f.reset();
-    } catch (err) {
-      if (err.status === 409) {
-        setDup(err.data);
-      } else if (err.status === 422) {
-        f.setE(err.data.errors || {});
-      } else {
-        setMsg('An unexpected error occurred. Check API logs.');
-      }
-    }
+    const match = patients.find(p =>
+      p.last_name.trim().toLowerCase() === f.v.last_name.trim().toLowerCase() &&
+      p.first_name.trim().toLowerCase() === f.v.first_name.trim().toLowerCase() &&
+      p.birthdate === f.v.birthdate);
+    if (match && !force) { setDup(match); return; }
+
+    const { valid_id, ...rest } = f.v;
+    const record = {
+      ...rest,
+      last_name: rest.last_name.trim(),
+      first_name: rest.first_name.trim(),
+      philhealth_no: rest.is_philhealth_member ? rest.philhealth_no : '',
+      valid_id_name: valid_id ? valid_id.name : '',
+      id: nextId(patients),
+    };
+    setPatients([record, ...patients]);
+    setMsg(`Patient ${record.first_name} ${record.last_name} registered successfully with ID ${record.id}.`);
+    clearAll();
   };
 
   return <section className="card" aria-labelledby="pf-h">
-    <h2 id="pf-h">Patient registration <span className="tag">Laravel Connected</span></h2>
-    <p className="sub">Fields marked * are required. Duplicate detection executed via API.</p>
+    <h2 id="pf-h">Patient registration</h2>
+    <p className="sub">Fields marked * are required. </p>
     {msg && <div className="ok" role="status">{msg}</div>}
-    <form onSubmit={submit} noValidate>
+    <form key={formKey} onSubmit={submit} noValidate>
       <Summary errors={f.e} />
       {dup && <div className="dup" role="alert">
-        <strong>Possible duplicate patient:</strong> Match found with Patient ID #{dup.duplicate_id}.
+        <strong>Possible duplicate patient:</strong> {dup.first_name} {dup.last_name} (born {dup.birthdate}) is already registered as Patient ID #{dup.id}.
         <div className="actions">
-          <button type="button" className="btn sec" onClick={() => { setDup(null); f.reset(); }}>Use existing record</button>
+          <button type="button" className="btn sec" onClick={clearAll}>Use existing record</button>
           <button type="button" className="btn warn" onClick={() => submit(null, true)}>Register as new patient anyway</button>
         </div>
       </div>}
@@ -293,7 +307,7 @@ function PatientForm({ patients, setPatients }) {
         <TextArea f={f} name="address" label="Home address" req placeholder="House no., street, barangay, city" maxLength={200} />
         <Switch f={f} name="is_philhealth_member" label="PhilHealth member" />
         {f.v.is_philhealth_member && <TextField f={f} name="philhealth_no" label="PhilHealth number" req placeholder="12 digits" maxLength={12} />}
-        <FileField f={f} name="valid_id" label="Valid ID (optional)" help="PDF, JPG, or PNG up to 2 MB." />
+        <FileField f={f} name="valid_id" label="Valid ID (optional)" help="PDF, JPG, or PNG up to 2 MB. Only the file name is saved." />
         <div className="fld span2">
           <label className="opt" htmlFor="consent">
             <input type="checkbox" id="consent" name="consent" checked={!!f.v.consent} onChange={ev => f.set('consent', ev.target.checked)} />
@@ -304,50 +318,94 @@ function PatientForm({ patients, setPatients }) {
       </div>
       <div className="actions">
         <button type="submit" className="btn">Register patient</button>
-        <button type="button" className="btn sec" onClick={() => f.reset()}>Clear patient form</button>
+        <button type="button" className="btn sec" onClick={clearAll}>Clear patient form</button>
       </div>
     </form>
+
+    {patients.length > 0 && <div className="tablewrap">
+      <h3>Registered patients ({patients.length})</h3>
+      <table>
+        <thead><tr><th>ID</th><th>Name</th><th>Birthdate</th><th>Mobile</th></tr></thead>
+        <tbody>
+          {patients.map(p => <tr key={p.id}><td>{p.id}</td><td>{p.first_name} {p.last_name}</td><td>{p.birthdate}</td><td>{p.mobile}</td></tr>)}
+        </tbody>
+      </table>
+    </div>}
   </section>;
 }
 
 const apptInit = { patient_id: '', provider_id: '', procedure_id: '', date: '', time: '', room_id: '', equipment: [], duration: 30, send_notice: true, notes: '', status: 'Scheduled' };
 
-// IDs correspond to database foreign key primary keys
 const PROVIDERS = [{ value: '1', label: 'Dr. Reyes (Ophthalmology)' }, { value: '2', label: 'Dr. Santos (Orthopedics)' }, { value: '3', label: 'Dr. Lim (Gastroenterology)' }];
 const PROCS = [{ value: '1', label: 'Cataract surgery', mins: 90 }, { value: '2', label: 'Eye consultation', mins: 30 }, { value: '3', label: 'Colonoscopy', mins: 60 }];
 const ROOMS = [{ value: '1', label: 'Consultation Room 1' }, { value: '2', label: 'Operating Room 1' }];
 const EQUIP = [{ value: '1', label: 'Slit lamp' }, { value: '2', label: 'Phaco machine' }];
+const labelOf = (list, val) => (list.find(x => x.value === String(val)) || {}).label || '';
+
+const OPEN_MIN = 8 * 60, CLOSE_MIN = 17 * 60;
+
+function validateAppt(v, appts) {
+  const e = {};
+  if (!v.patient_id) e.patient_id = 'Select a patient.';
+  if (!v.provider_id) e.provider_id = 'Select a healthcare provider.';
+  if (!v.procedure_id) e.procedure_id = 'Select a procedure.';
+  if (!v.date) e.date = 'Date is required.';
+  else if (v.date < today()) e.date = 'Date cannot be in the past.';
+  if (!v.room_id) e.room_id = 'Select a room.';
+  if (!v.time) e.time = 'Start time is required.';
+  else {
+    const start = toMin(v.time), end = start + Number(v.duration);
+    if (start < OPEN_MIN || end > CLOSE_MIN) {
+      e.time = 'The appointment must fit within clinic hours (08:00 to 17:00).';
+    } else if (v.date && v.provider_id && v.room_id) {
+      const clash = appts.find(a => a.date === v.date && a.status !== 'Cancelled' &&
+        (a.provider_id === v.provider_id || a.room_id === v.room_id) &&
+        start < a.end && a.start < end);
+      if (clash) {
+        const what = clash.provider_id === v.provider_id ? 'The provider is' : 'The room is';
+        e.time = `${what} already booked ${fmtTime(clash.start)}-${fmtTime(clash.end)} (appointment #${clash.id}).`;
+      }
+    }
+  }
+  return e;
+}
 
 function AppointmentForm({ patients, appts, setAppts }) {
   const f = useForm(apptInit);
   const [msg, setMsg] = useState(null);
 
-  // Select the procedure and auto-fill its default duration in one update
   const pickProc = val => {
     const p = PROCS.find(x => x.value === String(val));
     f.setMany(p ? { procedure_id: String(val), duration: p.mins } : { procedure_id: String(val) });
   };
 
-  const submit = async (ev) => {
+  const submit = (ev) => {
     ev.preventDefault(); setMsg(null);
-    try {
-      const data = await apiRequest('/appointments', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(f.v)
-      });
-      setAppts([data, ...appts]);
-      setMsg(`Appointment #${data.id} scheduled successfully.`);
-      f.reset();
-    } catch (err) {
-      if (err.status === 422) f.setE(err.data.errors || {});
-      else setMsg('Error scheduling appointment.');
-    }
+    const errs = validateAppt(f.v, appts);
+    if (Object.keys(errs).length) { f.setE(errs); return; }
+
+    const patient = patients.find(p => String(p.id) === String(f.v.patient_id));
+    const start = toMin(f.v.time);
+    const record = {
+      ...f.v,
+      id: nextId(appts),
+      patient_name: patient ? `${patient.first_name} ${patient.last_name}` : '',
+      duration: Number(f.v.duration),
+      start,
+      end: start + Number(f.v.duration),
+    };
+    setAppts([record, ...appts]);
+    setMsg(`Appointment #${record.id} scheduled successfully.`);
+    f.reset();
   };
 
+  const setStatus = (id, status) => setAppts(appts.map(a => a.id === id ? { ...a, status } : a));
+
   return <section className="card" aria-labelledby="af-h">
-    <h2 id="af-h">Book appointment <span className="tag">Laravel Interval Overlap Validated</span></h2>
+    <h2 id="af-h">Book appointment</h2>
+    <p className="sub">Double-booking of the same provider or room is blocked.</p>
     {msg && <div className="ok" role="status">{msg}</div>}
+    {!patients.length && <div className="dup" role="status">No patients yet. Register a patient first, then come back to book an appointment.</div>}
     <form onSubmit={submit} noValidate>
       <Summary errors={f.e} />
       <div className="grid">
@@ -367,39 +425,85 @@ function AppointmentForm({ patients, appts, setAppts }) {
         <button type="button" className="btn sec" onClick={() => f.reset()}>Clear appointment form</button>
       </div>
     </form>
+
+    {appts.length > 0 && <div className="tablewrap">
+      <h3>Booked appointments ({appts.length})</h3>
+      <table>
+        <thead><tr><th>ID</th><th>Patient</th><th>Provider</th><th>Procedure</th><th>Date</th><th>Time</th><th>Status</th><th>Actions</th></tr></thead>
+        <tbody>
+          {appts.map(a => <tr key={a.id}>
+            <td>{a.id}</td><td>{a.patient_name}</td><td>{labelOf(PROVIDERS, a.provider_id)}</td>
+            <td>{labelOf(PROCS, a.procedure_id)}</td><td>{a.date}</td><td>{fmtTime(a.start)}-{fmtTime(a.end)}</td><td>{a.status}</td>
+            <td>{a.status === 'Scheduled' && <>
+              <button type="button" className="btn sec sm" onClick={() => setStatus(a.id, 'Completed')}>Complete</button>{' '}
+              <button type="button" className="btn warn sm" onClick={() => setStatus(a.id, 'Cancelled')}>Cancel</button>
+            </>}</td>
+          </tr>)}
+        </tbody>
+      </table>
+    </div>}
   </section>;
 }
 
 const invInit = { item_id: '', type: '', quantity: '', unit: '', supplier: '', transaction_date: today(), expiry_date: '', unit_cost: '', reorder_point: 20, urgent: false, receipt: null, remarks: '' };
 const ITEMS = [{ value: '1', label: 'Intraocular lens' }, { value: '2', label: 'Surgical gloves' }];
 
-function InventoryForm() {
+const stockOf = (txns, itemId) => txns.filter(t => t.item_id === String(itemId))
+  .reduce((sum, t) => sum + (t.type === 'Stock in' ? t.quantity : -t.quantity), 0);
+
+function validateInv(v, txns) {
+  const e = {};
+  if (!v.item_id) e.item_id = 'Select an item.';
+  if (!v.type) e.type = 'Select a transaction type.';
+  const q = Number(v.quantity);
+  if (!v.quantity) e.quantity = 'Quantity is required.';
+  else if (!Number.isInteger(q) || q < 1 || q > 5000) e.quantity = 'Quantity must be a whole number from 1 to 5000.';
+  if (!v.unit) e.unit = 'Select a unit.';
+  if (!v.transaction_date) e.transaction_date = 'Transaction date is required.';
+  else if (v.transaction_date > today()) e.transaction_date = 'Transaction date cannot be in the future.';
+  if (v.type === 'Stock in') {
+    if (!v.supplier.trim()) e.supplier = 'Supplier is required for stock in.';
+    if (v.unit_cost === '' || Number(v.unit_cost) < 0) e.unit_cost = 'Enter a unit cost of 0 or more.';
+    if (v.expiry_date && v.transaction_date && v.expiry_date <= v.transaction_date) e.expiry_date = 'Expiry date must be after the transaction date.';
+  }
+  if (v.type === 'Stock out' && v.item_id && !e.quantity) {
+    const have = stockOf(txns, v.item_id);
+    if (q > have) e.quantity = `Not enough stock. Only ${have} available.`;
+  }
+  const fileErr = checkFile(v.receipt);
+  if (fileErr) e.receipt = fileErr;
+  return e;
+}
+
+function InventoryForm({ txns, setTxns }) {
   const f = useForm(invInit);
   const [msg, setMsg] = useState(null);
+  const [formKey, setFormKey] = useState(0);
 
-  const submit = async (ev) => {
+  const submit = (ev) => {
     ev.preventDefault(); setMsg(null);
-    const formData = new FormData();
-    Object.keys(f.v).forEach(k => {
-      if (k === 'receipt' && f.v[k]) formData.append('receipt', f.v[k]);
-      else if (typeof f.v[k] === 'boolean') formData.append(k, f.v[k] ? '1' : '0');
-      else if (f.v[k] !== null && f.v[k] !== '') formData.append(k, f.v[k]);
-    });
-
-    try {
-      await apiRequest('/inventory-transactions', { method: 'POST', body: formData });
-      setMsg(`Inventory transaction recorded successfully.`);
-      f.reset();
-    } catch (err) {
-      if (err.status === 422) f.setE(err.data.errors || {});
-      else setMsg('Error saving transaction.');
-    }
+    const errs = validateInv(f.v, txns);
+    if (Object.keys(errs).length) { f.setE(errs); return; }
+    const { receipt, ...rest } = f.v;
+    const isIn = rest.type === 'Stock in';
+    const record = {
+      ...rest,
+      quantity: Number(rest.quantity),
+      supplier: isIn ? rest.supplier.trim() : '',
+      expiry_date: isIn ? rest.expiry_date : '',
+      unit_cost: isIn ? Number(rest.unit_cost) : '',
+      receipt_name: receipt ? receipt.name : '',
+      id: nextId(txns),
+    };
+    setTxns([record, ...txns]);
+    setMsg('Inventory transaction recorded successfully.');
+    f.reset(); setFormKey(k => k + 1);
   };
 
   return <section className="card" aria-labelledby="if-h">
-    <h2 id="if-h">Inventory transaction <span className="tag">Stock Managed</span></h2>
+    <h2 id="if-h">Inventory transaction</h2>
     {msg && <div className="ok" role="status">{msg}</div>}
-    <form onSubmit={submit} noValidate>
+    <form key={formKey} onSubmit={submit} noValidate>
       <Summary errors={f.e} />
       <div className="grid">
         <SelectField f={f} name="item_id" label="Item" req options={ITEMS} />
@@ -412,41 +516,76 @@ function InventoryForm() {
         {f.v.type === 'Stock in' && <TextField f={f} name="unit_cost" type="number" label="Unit cost (PHP)" req min="0" step="0.01" />}
         <Slider f={f} name="reorder_point" label="Reorder point" min={5} max={100} step={5} unit="units" />
         <Switch f={f} name="urgent" label="Urgent order" />
-        <FileField f={f} name="receipt" label="Receipt (optional)" />
+        <FileField f={f} name="receipt" label="Receipt (optional)" help="Only the file name is saved." />
         <TextArea f={f} name="remarks" label="Remarks (optional)" />
       </div>
       <div className="actions">
         <button type="submit" className="btn">Record transaction</button>
       </div>
     </form>
+
+    <div className="tablewrap">
+      <h3>Current stock</h3>
+      <table>
+        <thead><tr><th>Item</th><th>On hand</th><th>Reorder point</th><th>Status</th></tr></thead>
+        <tbody>
+          {ITEMS.map(it => {
+            const stock = stockOf(txns, it.value);
+            const last = txns.find(t => t.item_id === it.value);
+            const rp = last ? last.reorder_point : 20;
+            const low = stock <= rp;
+            return <tr key={it.value}>
+              <td>{it.label}</td><td className={low ? 'low' : ''}>{stock}</td><td>{rp}</td>
+              <td className={low ? 'low' : ''}>{low ? 'Low stock' : 'OK'}</td>
+            </tr>;
+          })}
+        </tbody>
+      </table>
+    </div>
+
+    {txns.length > 0 && <div className="tablewrap">
+      <h3>Transaction history ({txns.length})</h3>
+      <table>
+        <thead><tr><th>ID</th><th>Date</th><th>Item</th><th>Type</th><th>Qty</th><th>Unit</th></tr></thead>
+        <tbody>
+          {txns.map(t => <tr key={t.id}>
+            <td>{t.id}</td><td>{t.transaction_date}</td><td>{labelOf(ITEMS, t.item_id)}</td><td>{t.type}</td><td>{t.quantity}</td><td>{t.unit}</td>
+          </tr>)}
+        </tbody>
+      </table>
+    </div>}
   </section>;
 }
 
-const filtInit = { keyword: '', from: '', to: '', provider_id: '', status: ['Scheduled'], sort: 'asc', per_page: 10, archived: false, format: 'json' };
+const filtInit = { keyword: '', from: '', to: '', provider_id: '', status: ['Scheduled'], sort: 'asc', per_page: 10 };
 
-function ReportForm() {
+function ReportForm({ appts }) {
   const f = useForm(filtInit);
   const [res, setRes] = useState(null);
 
-  const run = async (ev) => {
+  const run = (ev) => {
     ev.preventDefault();
-    const params = new URLSearchParams();
-    Object.keys(f.v).forEach(k => {
-      if (Array.isArray(f.v[k])) f.v[k].forEach(val => params.append(`${k}[]`, val));
-      else if (typeof f.v[k] === 'boolean') params.append(k, f.v[k] ? '1' : '0');
-      else if (f.v[k]) params.append(k, f.v[k]);
-    });
+    const errs = {};
+    if (f.v.from && f.v.to && f.v.from > f.v.to) errs.to = 'To date must be on or after the From date.';
+    const pp = Number(f.v.per_page);
+    if (!Number.isInteger(pp) || pp < 5 || pp > 100) errs.per_page = 'Rows per page must be between 5 and 100.';
+    if (Object.keys(errs).length) { f.setE(errs); return; }
+    f.setE({});
 
-    try {
-      const data = await apiRequest(`/reports/appointments?${params.toString()}`);
-      setRes(data.data || data);
-    } catch (err) {
-      if (err.status === 422) f.setE(err.data.errors || {});
-    }
+    const kw = f.v.keyword.trim().toLowerCase();
+    let rows = appts.filter(a =>
+      (!kw || a.patient_name.toLowerCase().includes(kw)) &&
+      (!f.v.from || a.date >= f.v.from) &&
+      (!f.v.to || a.date <= f.v.to) &&
+      (!f.v.provider_id || a.provider_id === f.v.provider_id) &&
+      (!f.v.status.length || f.v.status.includes(a.status)));
+    rows.sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time));
+    if (f.v.sort === 'desc') rows.reverse();
+    setRes({ total: rows.length, rows: rows.slice(0, pp) });
   };
 
   return <section className="card" aria-labelledby="rf-h">
-    <h2 id="rf-h">Report filters <span className="tag">API Query Search</span></h2>
+    <h2 id="rf-h">Report filters</h2>
     <form onSubmit={run} noValidate>
       <Summary errors={f.e} />
       <div className="grid">
@@ -463,12 +602,15 @@ function ReportForm() {
       </div>
     </form>
     {res && <div className="tablewrap">
-      <h3>Results ({res.length})</h3>
+      <h3>Results ({res.total}{res.total > res.rows.length ? `, showing ${res.rows.length}` : ''})</h3>
       <table>
-        <thead><tr><th>ID</th><th>Date</th><th>Time</th><th>Status</th></tr></thead>
+        <thead><tr><th>ID</th><th>Patient</th><th>Provider</th><th>Date</th><th>Time</th><th>Status</th></tr></thead>
         <tbody>
-          {res.map(r => <tr key={r.id}><td>{r.id}</td><td>{r.date}</td><td>{r.time}</td><td>{r.status}</td></tr>)}
-          {!res.length && <tr><td colSpan="4">No records found.</td></tr>}
+          {res.rows.map(r => <tr key={r.id}>
+            <td>{r.id}</td><td>{r.patient_name}</td><td>{labelOf(PROVIDERS, r.provider_id)}</td>
+            <td>{r.date}</td><td>{fmtTime(r.start)}-{fmtTime(r.end)}</td><td>{r.status}</td>
+          </tr>)}
+          {!res.rows.length && <tr><td colSpan="6">No records found.</td></tr>}
         </tbody>
       </table>
     </div>}
@@ -477,8 +619,9 @@ function ReportForm() {
 
 function App() {
   const [tab, setTab] = useState(0);
-  const [patients, setPatients] = useState([]);
-  const [appts, setAppts] = useState([]);
+  const [patients, setPatients] = usePersisted('clinic_patients', []);
+  const [appts, setAppts] = usePersisted('clinic_appts', []);
+  const [txns, setTxns] = usePersisted('clinic_txns', []);
 
   const tabs = ['Patient registration', 'Appointment', 'Inventory', 'Report filters'];
 
@@ -486,8 +629,8 @@ function App() {
     <nav aria-label="Forms">{tabs.map((t, i) => <button key={t} onClick={() => setTab(i)} aria-current={tab === i ? 'page' : undefined}>{t}</button>)}</nav>
     {tab === 0 && <PatientForm patients={patients} setPatients={setPatients} />}
     {tab === 1 && <AppointmentForm patients={patients} appts={appts} setAppts={setAppts} />}
-    {tab === 2 && <InventoryForm />}
-    {tab === 3 && <ReportForm />}
+    {tab === 2 && <InventoryForm txns={txns} setTxns={setTxns} />}
+    {tab === 3 && <ReportForm appts={appts} />}
   </>;
 }
 
